@@ -1,0 +1,56 @@
+name: Build WDA IPA (unsigned)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select a stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Build WebDriverAgentRunner for a generic iOS device (no signing)
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package the .app into Payload/ -> WDA.ipa
+        run: |
+          set -euo pipefail
+          APP="$(find build/Build/Products -name 'WebDriverAgentRunner-Runner.app' -maxdepth 3 | head -1)"
+          echo "Built app: $APP"
+          test -n "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "WDA bundle id: $BID"
+          echo "$BID" > WDA-bundle-id.txt
+          zip -qry WDA.ipa Payload
+          ls -la WDA.ipa
+
+      - name: Upload the IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WDA-ipa
+          path: |
+            WDA.ipa
+            WDA-bundle-id.txt
+          if-no-files-found: error
+          retention-days: 7
