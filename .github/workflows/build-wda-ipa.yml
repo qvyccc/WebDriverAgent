@@ -29,14 +29,26 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=NO
+
+      - name: Strip embedded XCTest frameworks (provided by the device DDI)
+        run: |
+          set -euo pipefail
+          APP="$(find build/Build/Products -name 'WebDriverAgentRunner-Runner.app' -maxdepth 3 | head -1)"
+          echo "Built app: $APP"; test -n "$APP"
+          echo "=== Mach-O binaries BEFORE strip ==="
+          while IFS= read -r f; do
+            if file "$f" | grep -qi 'Mach-O'; then echo "$(file -b "$f")  <=  ${f#$APP/}"; fi
+          done < <(find "$APP" -type f) | sort | uniq -c
+          rm -rf "$APP/Frameworks/XC"*.framework
+          rm -rf "$APP/Frameworks/"*XCTest*.framework 2>/dev/null || true
+          echo "=== Frameworks AFTER strip ==="
+          ls -1 "$APP/Frameworks" 2>/dev/null || echo "(no Frameworks dir)"
 
       - name: Package the .app into Payload/ -> WDA.ipa
         run: |
           set -euo pipefail
           APP="$(find build/Build/Products -name 'WebDriverAgentRunner-Runner.app' -maxdepth 3 | head -1)"
-          echo "Built app: $APP"
-          test -n "$APP"
           rm -rf Payload && mkdir Payload
           cp -R "$APP" Payload/
           BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
