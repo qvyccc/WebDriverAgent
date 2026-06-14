@@ -31,19 +31,24 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=NO
 
-      - name: Strip embedded XCTest frameworks (provided by the device DDI)
+      - name: Strip embedded XCTest frameworks everywhere (provided by device DDI)
         run: |
           set -euo pipefail
           APP="$(find build/Build/Products -name 'WebDriverAgentRunner-Runner.app' -maxdepth 3 | head -1)"
           echo "Built app: $APP"; test -n "$APP"
+
           echo "=== Mach-O binaries BEFORE strip ==="
-          while IFS= read -r f; do
-            if file "$f" | grep -qi 'Mach-O'; then echo "$(file -b "$f")  <=  ${f#$APP/}"; fi
-          done < <(find "$APP" -type f) | sort | uniq -c
-          rm -rf "$APP/Frameworks/XC"*.framework
-          rm -rf "$APP/Frameworks/"*XCTest*.framework 2>/dev/null || true
-          echo "=== Frameworks AFTER strip ==="
-          ls -1 "$APP/Frameworks" 2>/dev/null || echo "(no Frameworks dir)"
+          find "$APP" -type f | while read -r f; do
+            file "$f" | grep -qi 'mach-o' && echo "$(file -b "$f")  <=  ${f#$APP/}"
+          done
+
+          find "$APP" -type d -name 'XC*.framework' -exec rm -rf {} + 2>/dev/null || true
+          find "$APP" -type d -name '*XCTest*.framework' -exec rm -rf {} + 2>/dev/null || true
+
+          echo "=== Mach-O binaries AFTER strip (these must all be signable) ==="
+          find "$APP" -type f | while read -r f; do
+            file "$f" | grep -qi 'mach-o' && echo "$(file -b "$f")  <=  ${f#$APP/}"
+          done
 
       - name: Package the .app into Payload/ -> WDA.ipa
         run: |
